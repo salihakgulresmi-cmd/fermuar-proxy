@@ -54,8 +54,8 @@ export default async function handler(req, res) {
     let geminiResponse;
     let data;
 
-    // Yoğunluk takılmalarına karşı otomatik 3 deneme
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Google sunucu yoğunluğuna karşı 4 kademeli deneme (1.5s, 3s, 4s aralıklarla)
+    for (let attempt = 1; attempt <= 4; attempt++) {
       geminiResponse = await fetch(geminiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,9 +68,9 @@ export default async function handler(req, res) {
         break;
       }
 
-      // Eğer yoğunluk (503/429) varsa 1 saniye bekleyip tekrar dene
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 1200));
+      // 503 veya yüksek talep hatasında bekle ve tekrar dene
+      if (attempt < 4) {
+        await new Promise(r => setTimeout(r, attempt * 1500));
       }
     }
 
