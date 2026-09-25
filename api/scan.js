@@ -35,8 +35,6 @@ export default async function handler(req, res) {
       }
     }));
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
-
     const payload = {
       contents: [
         {
@@ -51,41 +49,45 @@ export default async function handler(req, res) {
       }
     };
 
-    let geminiResponse;
-    let data;
+    // Yoğunluk anında birbirini yedekleyen modeller sırasıyla denenir
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash'
+    ];
 
-    // Google sunucu yoğunluğuna karşı 4 kademeli deneme (1.5s, 3s, 4s aralıklarla)
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      geminiResponse = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+    let lastError = null;
 
-      data = await geminiResponse.json();
+    for (const model of candidateModels) {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-      if (geminiResponse.ok) {
-        break;
+      try {
+        const geminiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await geminiResponse.json();
+
+        if (geminiResponse.ok) {
+          const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textContent) {
+            return res.status(200).json({ result: textContent });
+          }
+        }
+
+        // Hata geldiyse kaydet ve bir sonraki modeli dene
+        lastError = data.error ? data.error.message : 'Yanıt alınamadı';
+      } catch (err) {
+        lastError = err.message;
       }
-
-      // 503 veya yüksek talep hatasında bekle ve tekrar dene
-      if (attempt < 4) {
-        await new Promise(r => setTimeout(r, attempt * 1500));
-      }
     }
 
-    if (!geminiResponse.ok) {
-      return res.status(geminiResponse.status).json({
-        error: data.error ? data.error.message : 'Gemini API Hatası'
-      });
-    }
+    return res.status(503).json({
+      error: 'Google sunucuları şu an çok yoğun. Lütfen 5-10 saniye sonra tekrar deneyin. (' + lastError + ')'
+    });
 
-    const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!textContent) {
-      return res.status(500).json({ error: 'Gemini yanıt üretemedi', raw: data });
-    }
-
-    return res.status(200).json({ result: textContent });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Bilinmeyen sunucu hatası' });
   }
