@@ -35,27 +35,44 @@ export default async function handler(req, res) {
       }
     }));
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
-    const geminiResponse = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              ...imageParts
-            ]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json'
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            ...imageParts
+          ]
         }
-      })
-    });
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json'
+      }
+    };
 
-    const data = await geminiResponse.json();
+    let geminiResponse;
+    let data;
+
+    // Yoğunluk takılmalarına karşı otomatik 3 deneme
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      geminiResponse = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      data = await geminiResponse.json();
+
+      if (geminiResponse.ok) {
+        break;
+      }
+
+      // Eğer yoğunluk (503/429) varsa 1 saniye bekleyip tekrar dene
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
 
     if (!geminiResponse.ok) {
       return res.status(geminiResponse.status).json({
